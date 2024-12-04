@@ -7,6 +7,7 @@
 # Modinfo:
 # 01/12/2024:	Improved the label parsing state machine
 # 04/12/2024:	Exported files for ZDS now assemble
+# 				Added directives in hints and tweaked hints data
 
 import sys
 import os
@@ -224,12 +225,22 @@ class Source:
 	def refactor(self):
 		output = []
 
-		if(self.target == "sjasmplus"):
-			output.append(Line(f"\tMODULE {self.module}"))
-
 		# Add the generic autogeneration comment
 		# 
+		output.append(Line(f";"))
 		output.append(Line(f";Automatically created from original source on {now.strftime('%Y-%m-%d %H:%M:%S')}"))
+		output.append(Line(f";"))
+
+		if(self.target == "sjasmplus"):
+			output.append(Line(f"\tMODULE {self.module}"))
+		elif(self.target == "zds"):
+			output.append(Line(f"\t.ASSUME ADL = 0"))
+
+		# Source specific directives
+		#
+		if("directives" in self.hints[self.target]):
+			for item in self.hints[self.target]["directives"]:
+				output.append(Line(item))
 
 		# Build up the xref and xdef lists
 		#
@@ -247,13 +258,14 @@ class Source:
 				# Source specific hints
 				#
 				if(self.target in self.hints):
-					for item in self.hints[self.target]:
-						if(item["hint"] in line.statement):
-							if("prepend" in item):
-								for p in item["prepend"]:
-									output.append(Line(p))
-							if("update" in item):
-								line.statement = item["update"]
+					if("hints" in self.hints[self.target]):
+						for item in self.hints[self.target]["hints"]:
+							if(item["hint"] in line.statement):
+								if("prepend" in item):
+									for p in item["prepend"]:
+										output.append(Line(p))
+								if("update" in item):
+									line.statement = item["update"]
 
 			output.append(line)
 
@@ -269,7 +281,7 @@ class Source:
 	def export(self):
 		filename = os.path.basename(self.filename)
 		if(self.target == "zds"):
-			filename = filename.replace(".Z80", ".ASM")
+			filename = filename.replace(".Z80", ".ASM").lower()
 		dirname = os.path.join(os.path.dirname(self.filename), self.target)
 		if(not os.path.exists(dirname)):
 			os.makedirs(dirname)
@@ -365,36 +377,84 @@ project.setFilenames([
 	"../src/MATH.Z80",
 ])
 project.setHints({
-	"../src/MAIN.Z80": { 
-		"zds": [
-			{
-				"hint": "\'Can\'\'t match \'",
-				"update": "DB\t\"Can\'t match \""
-			}
-		]
+	"../src/ACORN.Z80": {
+		"zds": {
+			"directives": [ "\tSEGMENT CODE" ],
+		}
+	},
+	"../src/ASMB.Z80": {
+		"zds": {
+			"directives": [ "\tSEGMENT CODE" ],
+		}
+	},
+	"../src/DATA.Z80": {
+		"zds": {
+			"directives": [
+				"\tDEFINE LORAM, SPACE = ROM",
+				"\tSEGMENT LORAM",
+				"\tALIGN 256",
+				";",
+				"\tEXTERN\tKEYDOWN",
+				"\tEXTERN\tKEYASCII",
+				"\tEXTERN\tKEYCOUNT"
+			],
+			"hints": [
+				{
+					"hint": "END",
+					"prepend": [
+						"KEYDOWN:\tDS\t1",
+						"KEYASCII:\tDS\t1",
+						"KEYCOUNT:\tDS\t1",
+						";"
+					]
+				}
+			]
+		}
 	},
 	"../src/EVAL.Z80": {
-		"zds": [
-			{
-				"hint": "FUNTOK+($-FUNTBL)/2",
-				"prepend": [
-					"FUNTBL_END:\tEQU\t$"
-				],
-				"update": "EQU\tFUNTOK+(FUNTBL_END-FUNTBL)/2"
-			}
-		]
+		"zds": {
+			"directives": [ "\tSEGMENT CODE" ],
+			"hints": [
+				{
+					"hint": "FUNTOK+($-FUNTBL)/2",
+					"prepend": [
+						"FUNTBL_END:\tEQU\t$"
+					],
+					"update": "EQU\tFUNTOK+(FUNTBL_END-FUNTBL)/2"
+				}
+			]
+		}
 	},
 	"../src/EXEC.Z80": {
-		"zds": [
-			{
-				"hint": "TCMD-128+($-CMDTAB)/2",
-				"prepend": [
-					"CMDTAB_END:\tEQU\t$"
-				],
-				"update": "EQU\tTCMD-128+(CMDTAB_END-CMDTAB)/2"
-			}
-		]
-	}
+		"zds": {
+			"directives": [ "\tSEGMENT CODE" ],
+			"hints": [
+				{
+					"hint": "TCMD-128+($-CMDTAB)/2",
+					"prepend": [
+						"CMDTAB_END:\tEQU\t$"
+					],
+					"update": "EQU\tTCMD-128+(CMDTAB_END-CMDTAB)/2"
+				}
+			]
+		}
+	},	
+	"../src/MAIN.Z80": { 
+		"zds": {
+			"directives": [ "\tSEGMENT CODE" ],
+			"hints": [
+				{
+					"hint": "\'Can\'\'t match \'",
+					"update": "DB\t\"Can\'t match \""
+				}
+			]
+		}
+	},
+	"../src/MATH.Z80": {
+		"zds": {
+			"directives": [ "\tSEGMENT CODE" ],
+		}
+	}	
 })
 project.parse()
 project.export()
