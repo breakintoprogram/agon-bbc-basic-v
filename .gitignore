@@ -47,3 +47,19 @@ build/
 *~
 #*
 .#*
+
+# Automatically generated source files
+acorn.asm
+asmb.asm
+data.asm 
+eval.asm
+exec.asm
+main.asm
+math.asm 
+
+# ZDS files
+*.lst
+*.linkcmd
+*.mak
+*.wsp
+*.lod
