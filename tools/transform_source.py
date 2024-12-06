@@ -1,13 +1,13 @@
 # Title:		Z80 Source Transformer
 # Author:		Dean Belfield
 # Created:		15/08/2024
-# Last Updated:	04/12/2024
+# Last Updated:	06/12/2024
 # Description:	Convert Z80 assembler to work on various assemblers
 #
 # Modinfo:
 # 01/12/2024:	Improved the label parsing state machine
 # 04/12/2024:	Exported files for ZDS now assemble
-# 				Added directives in hints and tweaked hints data
+# 06/12/2024:	Added directives in hints and tweaked hints data
 
 import sys
 import os
@@ -265,7 +265,7 @@ class Source:
 									for p in item["prepend"]:
 										output.append(Line(p))
 								if("update" in item):
-									line.statement = item["update"]
+									line = Line(item["update"])
 
 			output.append(line)
 
@@ -380,6 +380,20 @@ project.setHints({
 	"../src/ACORN.Z80": {
 		"zds": {
 			"directives": [ "\tSEGMENT CODE" ],
+			"hints": [
+				{
+					"hint": "EQU\t0FFEEH",
+					"update": "\tXREF\tOSWRCH"
+				},
+				{
+					"hint": "EQU\t0FFF1H",
+					"update": "\tXREF\tOSWORD"
+				},
+				{
+					"hint": "EQU\t0FFF4H",
+					"update": "\tXREF\tOSBYTE"
+				}
+			]
 		}
 	},
 	"../src/ASMB.Z80": {
@@ -394,9 +408,9 @@ project.setHints({
 				"\tSEGMENT LORAM",
 				"\tALIGN 256",
 				";",
-				"\tEXTERN\tKEYDOWN",
-				"\tEXTERN\tKEYASCII",
-				"\tEXTERN\tKEYCOUNT"
+				"\tXDEF\tKEYDOWN",
+				"\tXDEF\tKEYASCII",
+				"\tXDEF\tKEYCOUNT"
 			],
 			"hints": [
 				{
@@ -413,14 +427,19 @@ project.setHints({
 	},
 	"../src/EVAL.Z80": {
 		"zds": {
-			"directives": [ "\tSEGMENT CODE" ],
+			"directives": [
+				"\tSEGMENT CODE",
+				";",				
+				"\tXDEF\tCOUNT0",
+				"\tXDEF\tCOUNT1"
+			],
 			"hints": [
 				{
 					"hint": "FUNTOK+($-FUNTBL)/2",
 					"prepend": [
 						"FUNTBL_END:\tEQU\t$"
 					],
-					"update": "EQU\tFUNTOK+(FUNTBL_END-FUNTBL)/2"
+					"update": "TCMD:\tEQU\tFUNTOK+(FUNTBL_END-FUNTBL)/2"
 				}
 			]
 		}
@@ -434,7 +453,7 @@ project.setHints({
 					"prepend": [
 						"CMDTAB_END:\tEQU\t$"
 					],
-					"update": "EQU\tTCMD-128+(CMDTAB_END-CMDTAB)/2"
+					"update": "TLAST:\tEQU\tTCMD-128+(CMDTAB_END-CMDTAB)/2"
 				}
 			]
 		}
@@ -445,7 +464,7 @@ project.setHints({
 			"hints": [
 				{
 					"hint": "\'Can\'\'t match \'",
-					"update": "DB\t\"Can\'t match \""
+					"update": "\tDB\t\"Can\'t match \""
 				}
 			]
 		}
