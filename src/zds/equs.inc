@@ -2,15 +2,15 @@
 ; Title:	BBC Basic for AGON - Equs
 ; Author:	Dean Belfield
 ; Created:	04/12/2024
-; Last Updated:	04/12/2024
+; Last Updated:	05/12/2024
 ;
 ; Modinfo:
+; 05/12/2024:	Removed Stack_Top
 
 			XREF		STAVAR
 			XREF		ACCS
 			
 RAM_Top:		EQU		0FF00h
-Stack_Top:		EQU		00000h	; Stack at top
 	
 ; For GPIO
 ; PA not available on eZ80L92
