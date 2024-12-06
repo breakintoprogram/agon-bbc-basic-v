@@ -57,10 +57,9 @@ def replaceInstruction(string, find, replace):
 # Replace a string on a word boundary provided it is not at the start 
 #
 def replaceOperator(string, find, replace):
-	if(not string.startswith(find)):
+	if(not string.startswith(find) and not f"'{find}'" in string):
 		return re.sub(r"\b" + find + r"\b", replace, string)
 	return string
-
 
 # Represents a single line of source
 # Members:
@@ -410,7 +409,8 @@ project.setHints({
 				";",
 				"\tXDEF\tKEYDOWN",
 				"\tXDEF\tKEYASCII",
-				"\tXDEF\tKEYCOUNT"
+				"\tXDEF\tKEYCOUNT",
+				"\tXDEF\tSCRAP"
 			],
 			"hints": [
 				{
@@ -419,6 +419,9 @@ project.setHints({
 						"KEYDOWN:\tDS\t1",
 						"KEYASCII:\tDS\t1",
 						"KEYCOUNT:\tDS\t1",
+						"SCRAP:\tDS\t31",
+						";",
+						"\tALIGN 256",
 						";"
 					]
 				}
