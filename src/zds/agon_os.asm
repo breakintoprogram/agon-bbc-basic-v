@@ -2,9 +2,10 @@
 ; Title:	BBC Basic for AGON - MOS stuff
 ; Author:	Dean Belfield
 ; Created:	04/12/2024
-; Last Updated:	04/12/2024
+; Last Updated:	08/12/2024
 ;
 ; Modinfo:
+; 08/12/2024:	Added OSCLI and file I/O
 
 			.ASSUME	ADL = 0
 				
@@ -40,7 +41,9 @@
 			
 			XREF	EXTERR
 			XREF	VBLANK_INIT
+			XREF	VBLANK_STOP
 			XREF	USER
+			XREF	COUNT
 			XREF	COUNT0
 			XREF	COUNT1
 			XREF	GETCSR 
@@ -48,8 +51,31 @@
 			XREF	NULLTOCR
 			XREF	CRLF
 			XREF	FLAGS
+			XREF	OSWRCHPT
+			XREF	OSWRCHCH
+			XREF	OSWRCHFH
 			XREF	KEYASCII
 			XREF	KEYDOWN
+			XREF	LISTON 
+			XREF	PAGE_
+			XREF	CSTR_FNAME
+			XREF	CSTR_FINDCH
+			XREF	CSTR_CAT 
+			XREF	CSTR_ENDSWITH
+			XREF	CSTR_LINE 
+			XREF	NEWIT
+			XREF	BAD
+			XREF	CLEAN
+			XREF	LINNUM
+			XREF	BUFFER
+			XREF	NXT
+			XREF	ERROR_
+			XREF	XEQ
+			XREF	LEXAN2
+			XREF	GETTOP
+			XREF	FINDL
+			XREF	DEL
+			XREF	LISTIT
 
 ;OSINIT - Initialise RAM mapping etc.
 ;If BASIC is entered by BBCBASIC FILENAME then file
@@ -61,7 +87,7 @@
 ;
 OSINIT:			CALL	VBLANK_INIT
 			XOR	A
-;			LD	(FLAGS), A		; Clear flags and set F = Z
+			LD	(FLAGS), A		; Clear flags and set F = Z
 			LD 	HL, USER
 			LD	DE, RAM_Top
 			LD	E, A			; Page boundary
@@ -122,6 +148,420 @@ ESCSET:			RET
 ;
 RESET:			RET				; Yes this is fine
 
+; OSOPEN
+; HL: Pointer to path
+;  F: C Z
+;     x x OPENIN
+; 	  OPENOUT
+;     x	  OPENUP
+; Returns:
+;  A: Filehandle, 0 if cannot open
+;
+OSOPEN:			LD	C, fa_read
+			JR	Z, $F
+			LD	C, fa_write | fa_open_append
+			JR	C, $F
+			LD	C, fa_write | fa_create_always
+$$:			MOSCALL	mos_fopen			
+			RET
+
+;OSSHUT - Close disk file(s).
+; E = file channel
+;  If E=0 all files are closed (except SPOOL)
+; Destroys: A,B,C,D,E,H,L,F
+;
+OSSHUT:			PUSH	BC
+			LD	C, E
+			MOSCALL	mos_fclose
+			POP	BC
+			RET
+	
+; OSBGET - Read a byte from a random disk file.
+;  E = file channel
+; Returns
+;  A = byte read
+;  Carry set if LAST BYTE of file
+; Destroys: A,B,C,F
+;
+OSBGET:			PUSH	BC
+			LD	C, E
+			MOSCALL	mos_fgetc
+			POP	BC
+			RET
+	
+; OSBPUT - Write a byte to a random disk file.
+;  E = file channel
+;  A = byte to write
+; Destroys: A,B,C,F
+;	
+OSBPUT:			PUSH	BC
+			LD	C, E
+			LD	B, A
+			MOSCALL	mos_fputc
+			POP	BC
+			RET
+
+; OSSTAT - Read file status
+;  E = file channel
+; Returns
+;  F: Z flag set - EOF
+;  A: If Z then A = 0
+; Destroys: A,D,E,H,L,F
+;
+OSSTAT:			PUSH	BC
+			LD	C, E
+			MOSCALL	mos_feof
+			POP	BC
+			CP	1
+			RET
+	
+; GETPTR - Return file pointer.
+;    E = file channel
+; Returns:
+; DEHL = pointer (0-&7FFFFF)
+; Destroys: A,B,C,D,E,H,L,F
+;
+GETPTR:			PUSH		IY
+			LD		C, E 
+			MOSCALL		mos_getfil 	; HLU: Pointer to FIL structure
+			PUSH.LIL	HL
+			POP.LIL		IY		; IYU: Pointer to FIL structure
+			LD.LIL		L, (IY + FIL.fptr + 0)
+			LD.LIL		H, (IY + FIL.fptr + 1)
+			LD.LIL		E, (IY + FIL.fptr + 2)
+			LD.LIL		D, (IY + FIL.fptr + 3)
+			POP		IY
+			RET
+
+; PUTPTR - Update file pointer.
+;    A = file channel
+; DEHL = new pointer (0-&7FFFFF)
+; Destroys: A,B,C,D,E,H,L,F
+;
+PUTPTR:			PUSH		IY 			
+			LD		C, A  		; C: Filehandle
+			PUSH.LIL	HL 		
+			LD.LIL		HL, 2
+			ADD.LIL		HL, SP
+			LD.LIL		(HL), E 	; 3rd byte of DWORD set to E
+			POP.LIL		HL
+			LD		E, D  		; 4th byte passed as E
+			MOSCALL		mos_flseek
+			POP		IY 
+			RET
+	
+; GETEXT - Find file size.
+;    E = file channel
+; Returns:
+; DEHL = file size (0-&800000)
+; Destroys: A,B,C,D,E,H,L,F
+;
+GETEXT:			PUSH		IY 
+			LD		C, E 
+			MOSCALL		mos_getfil 	; HLU: Pointer to FIL structure
+			PUSH.LIL	HL
+			POP.LIL		IY		; IYU: Pointer to FIL structure
+			LD.LIL		L, (IY + FIL.obj.objsize + 0)
+			LD.LIL		H, (IY + FIL.obj.objsize + 1)
+			LD.LIL		E, (IY + FIL.obj.objsize + 2)
+			LD.LIL		D, (IY + FIL.obj.objsize + 3)			
+			POP		IY 
+			RET	
+
+;OSLOAD - Load an area of memory from a file.
+;   Inputs: HL addresses filename (CR terminated)
+;           DE = address at which to load
+;           BC = maximum allowed size (bytes)
+;  Outputs: Carry reset indicates no room for file.
+; Destroys: A,B,C,D,E,H,L,F
+;
+OSLOAD:			PUSH	BC			; Stack the size
+			PUSH	DE			; Stack the load address
+			LD	DE, ACCS		; Buffer address for filename
+			CALL	CSTR_FNAME		; Fetch filename from MOS into buffer
+			LD	HL, ACCS		; HL: Filename
+			CALL	EXT_DEFAULT		; Tack on the extension .BBC if not specified
+			CALL	EXT_HANDLER		; Get the default handler
+			POP	DE			; Restore the load address
+			POP	BC			; Restore the size
+			OR	A
+			JP 	Z, OSLOAD_BBC
+;
+; Load the file in as a text file
+;
+OSLOAD_TXT:		XOR	A			; Set file attributes to read
+			CALL	OSOPEN			; Open the file			
+			LD 	E, A 			; The filehandle
+			OR	A
+			LD	A, 4			; File not found error
+			JP	Z, OSERROR		; Jump to error handler
+			CALL	NEWIT			; Call NEW to clear the program space
+;
+OSLOAD_TXT1:		LD	HL, ACCS 		; Where the input is going to be stored
+;
+; First skip any whitespace (indents) at the beginning of the input
+;
+$$:			CALL	OSBGET			; Read the byte into A
+			JR	C, OSLOAD_TXT3		; Is it EOF?
+			CP	LF 			; Is it LF?
+			JR	Z, OSLOAD_TXT3 		; Yes, so skip to the next line
+			CP	21h			; Is it less than or equal to ASCII space?
+			JR	C, $B 			; Yes, so keep looping
+			LD	(HL), A 		; Store the first character
+			INC	L
+;
+; Now read the rest of the line in
+;
+OSLOAD_TXT2:		CALL	OSBGET			; Read the byte into A
+			JR	C, OSLOAD_TXT4		; Is it EOF?
+			CP	20h			; Skip if not an ASCII character
+			JR	C, $F
+			LD	(HL), A 		; Store in the input buffer			
+			INC	L			; Increment the buffer pointer
+			JP	Z, BAD			; If the buffer is full (wrapped to 0) then jump to Bad Program error
+$$:			CP	LF			; Check for LF
+			JR	NZ, OSLOAD_TXT2		; If not, then loop to read the rest of the characters in
+;
+; Finally, handle EOL/EOF
+;
+OSLOAD_TXT3:		LD	(HL), CR		; Store a CR for BBC BASIC
+			LD	A, L			; Check for minimum line length
+			CP	2			; If it is 2 characters or less (including CR)
+			JR	C, $F			; Then don't bother entering it
+			PUSH	DE			; Preserve the filehandle
+			CALL	OSEDIT			; Enter the line in memory
+			CALL	C,CLEAN			; If a new line has been entered, then call CLEAN to set TOP and write &FFFF end of program marker
+			POP	DE
+$$:			CALL	OSSTAT			; End of file?
+			JR	NZ, OSLOAD_TXT1		; No, so loop
+			CALL	OSSHUT			; Close the file
+			SCF				; Flag to BASIC that we're good
+			RET
+;
+; Special case for BASIC programs with no blank line at the end
+;
+OSLOAD_TXT4:		CP	20h			; Skip if not an ASCII character
+			JR	C, $F
+			LD	(HL), A			; Store the character
+			INC	L
+			JP	Z, BAD
+$$:			JR	OSLOAD_TXT3
+;
+; This bit enters the line into memory
+; Also called from OSLOAD_TXT
+; Returns:
+; F: C if a new line has been entered (CLEAN will need to be called)
+;
+OSEDIT:			XOR	A			; Entry point after *EDIT
+			LD      (COUNT),A
+			LD      IY,ACCS
+			CALL    LINNUM			; HL: The line number from the input buffer
+			CALL    NXT			; Skip spaces
+			LD      A,H			; HL: The line number will be 0 for immediate mode or when auto line numbering is used
+			OR      L
+			JR      Z,LNZERO        	; Skip if there is no line number in the input buffer
+;
+; This bit does the lexical analysis and tokenisation
+;
+LNZERO:			LD	DE,BUFFER	
+                	LD	C,1			; LEFT MODE	
+                	PUSH	HL	
+                	CALL	LEXAN2			; LEXICAL ANALYSIS	
+                	POP	HL	
+                	LD	(DE),A			; TERMINATOR	
+                	XOR	A	
+                	LD	B,A	
+                	LD	C,E			; BC=LINE LENGTH	
+                	INC	DE	
+                	LD	(DE),A			; ZERO NEXT	
+                	LD	A,H	
+                	OR	L	
+                	LD	IY,BUFFER		; FOR XEQ	
+                	JP	Z,XEQ			; DIRECT MODE	
+                	PUSH	BC	
+                	CALL	FINDL	
+                	CALL	Z,DEL	
+                	POP	BC	
+                	LD	A,C	
+                	OR	A	
+                	RET	Z
+                	ADD	A,4	
+                	LD	C,A			; LENGTH INCLUSIVE	
+                	PUSH	DE			; LINE NUMBER	
+                	PUSH	BC			; SAVE LINE LENGTH	
+                	EX	DE,HL	
+                	PUSH	BC	
+                	CALL	GETTOP	
+                	POP	BC	
+                	PUSH	HL	
+                	ADD	HL,BC	
+                	PUSH	HL	
+                	INC	H	
+                	XOR	A	
+                	SBC	HL,SP	
+                	POP	HL	
+                	JP	NC,ERROR_		; "No room"	
+                	EX	(SP),HL	
+                	PUSH	HL	
+                	INC	HL	
+                	OR	A	
+                	SBC	HL,DE	
+                	LD	B,H			; BC=AMOUNT TO MOVE	
+                	LD	C,L	
+                	POP	HL	
+                	POP	DE	
+                	JR	Z,ATEND	
+                	LDDR				; MAKE SPACE	
+ATEND:          	POP	BC			; LINE LENGTH	
+                	POP	DE			; LINE NUMBER	
+                	INC	HL	
+                	LD	(HL),C			; STORE LENGTH	
+                	INC	HL	
+                	LD	(HL),E			; STORE LINE NUMBER	
+                	INC	HL	
+                	LD	(HL),D	
+                	INC	HL	
+                	LD	DE,BUFFER	
+                	EX	DE,HL	
+                	DEC	C	
+                	DEC	C	
+                	DEC	C	
+                	LDIR				; ADD LINE
+			SCF
+			RET	
+;
+; Load the file in as a tokenised binary blob
+;
+OSLOAD_BBC:		MOSCALL	mos_load		; Call LOAD in MOS
+			RET	NC			; If load returns with carry reset - NO ROOM
+			OR	A			; If there is no error (A=0)
+			SCF				; Need to set carry indicating there was room
+			RET	Z			; Return
+;
+OSERROR:		PUSH	AF			; Handle the MOS error
+			LD	HL, ACCS		; Address of the buffer
+			LD	BC, 256			; Length of the buffer
+			LD	E, A			; The error code
+			MOSCALL	mos_getError		; Copy the error message into the buffer
+			POP	AF			
+			PUSH	HL			; Stack the address of the error (now in ACCS)		
+			ADD	A, 127			; Add 127 to the error code (MOS errors start at 128, and are trappable)
+			JP	EXTERR			; Trigger an external error
+
+;OSSAVE - Save an area of memory to a file.
+;   Inputs: HL addresses filename (term CR)
+;           DE = start address of data to save
+;           BC = length of data to save (bytes)
+; Destroys: A,B,C,D,E,H,L,F
+;
+OSSAVE:			PUSH	BC			; Stack the size
+			PUSH	DE			; Stack the save address
+			LD	DE, ACCS		; Buffer address for filename
+			CALL	CSTR_FNAME		; Fetch filename from MOS into buffer
+			LD	HL, ACCS		; HL: Filename
+			CALL	EXT_DEFAULT		; Tack on the extension .BBC if not specified
+			CALL	EXT_HANDLER		; Get the default handler
+			POP	DE			; Restore the save address
+			POP	BC			; Restore the size
+			OR	A			; Is the extension .BBC
+			JR	Z, OSSAVE_BBC		; Yes, so use that
+;
+; Save the file out as a text file
+;
+OSSAVE_TXT:		LD 	A, (OSWRCHCH)		; Stack the current channel
+			PUSH	AF
+			XOR	A
+			INC	A			; Make sure C is clear, A is 1, for OPENOUT
+			LD	(OSWRCHCH), A
+			CALL	OSOPEN			; Open the file
+			LD	(OSWRCHFH), A		; Store the file handle for OSWRCH
+			LD	IX, LISTON		; Required for LISTIT
+			LD	HL, (PAGE_)		; Get start of program area
+			EXX
+			LD	BC, 0			; Set the initial indent counters
+			EXX			
+OSSAVE_TXT1:		LD	A, (HL)			; Check for end of program marker
+			OR	A		
+			JR	Z, OSSAVE_TXT2
+			INC	HL			; Skip the length byte
+			LD	E, (HL)			; Get the line number
+			INC	HL
+			LD	D, (HL)
+			INC	HL
+			CALL	LISTIT			; List the line
+			JR	OSSAVE_TXT1
+OSSAVE_TXT2:		LD	A, (OSWRCHFH)		; Get the file handle
+			LD	E, A
+			CALL	OSSHUT			; Close it
+			POP	AF			; Restore the channel
+			LD	(OSWRCHCH), A		
+			RET
+;
+; Save the file out as a tokenised binary blob
+;
+OSSAVE_BBC:		MOSCALL	mos_save		; Call SAVE in MOS
+			OR	A			; If there is no error (A=0)
+			RET	Z			; Just return
+			JR	OSERROR			; Trip an error
+
+; Check if an extension is specified in the filename
+; Add a default if not specified
+; HL: Filename (CSTR format)
+;
+EXT_DEFAULT:		PUSH	HL			; Stack the filename pointer	
+			LD	C, '.'			; Search for dot (marks start of extension)
+			CALL	CSTR_FINDCH
+			OR	A			; Check for end of string marker
+			JR	NZ, $F			; No, so skip as we have an extension at this point			
+			LD	DE, EXT_LOOKUP		; Get the first (default extension)
+			CALL	CSTR_CAT		; Concat it to string pointed to by HL
+$$:			POP	HL			; Restore the filename pointer
+			RET
+			
+; Check if an extension is valid and, if so, provide a pointer to a handler
+; HL: Filename (CSTR format)
+; Returns:
+;  A: Filename extension type (0=BBC tokenised, 1=ASCII untokenised)
+;
+EXT_HANDLER:		PUSH	HL			; Stack the filename pointer
+			LD	C, '.'			; Find the '.'
+			CALL	CSTR_FINDCH
+			LD	DE, EXT_LOOKUP		; The lookup table
+;
+EXT_HANDLER_1:		PUSH	HL			; Stack the pointer to the extension
+			CALL	CSTR_ENDSWITH		; Check whether the string ends with the entry in the lookup
+			POP	HL			; Restore the pointer to the extension
+			JR	Z, EXT_HANDLER_2	; We have a match!
+;
+$$:			LD	A, (DE)			; Skip to the end of the entry in the lookup
+			INC	DE
+			OR	A
+			JR	NZ, $B
+			INC	DE			; Skip the file extension # byte
+;
+			LD	A, (DE)			; Are we at the end of the table?
+			OR	A
+			JR	NZ, EXT_HANDLER_1	; No, so loop
+;			
+			LD      A,204			; Throw a "Bad name" error
+        		CALL    EXTERR
+        		DB    	"Bad name", 0
+;
+EXT_HANDLER_2:		INC	DE			; Skip to the file extension # byte
+			LD	A, (DE)		
+			POP	HL			; Restore the filename pointer
+			RET
+
+; Extension lookup table
+; CSTR, TYPE
+; 	- 0: BBC (tokenised BBC BASIC for Z80 format)
+; 	- 1: Human readable plain text
+;
+EXT_LOOKUP:		DB	'.BBC', 0, 0		; First entry is the default extension
+			DB	'.TXT', 0, 1
+			DB	'.ASC', 0, 1
+			DB	'.BAS', 0, 1
+			DB	0			; End of table
 ; OSWORD
 ;
 OSWORD:			RET				; TODO
@@ -262,7 +702,100 @@ OSBYTE_A0:		PUSH	IX
 
 ; OSCLI
 ;
-OSCLI:			RET
+;
+;OSCLI - Process a MOS command
+;
+OSCLI: 			CALL    SKIPSP
+			CP      CR
+			RET     Z
+			CP      '|'
+			RET     Z
+			EX      DE,HL
+			LD      HL,COMDS
+OSCLI0:			LD      A,(DE)
+			CALL    UPPRC
+			CP      (HL)
+			JR      Z,OSCLI2
+			JR      C,OSCLI6
+OSCLI1:			BIT     7,(HL)
+			INC     HL
+			JR      Z,OSCLI1
+			INC     HL
+			INC     HL
+			JR      OSCLI0
+;
+OSCLI2:			PUSH    DE
+OSCLI3:			INC     DE
+			INC     HL
+			LD      A,(DE)
+			CALL    UPPRC
+			CP      '.'			; ABBREVIATED?
+			JR      Z,OSCLI4
+			XOR     (HL)
+			JR      Z,OSCLI3
+			CP      80H
+			JR      Z,OSCLI4
+			POP     DE
+			JR      OSCLI1
+;
+OSCLI4:			POP     AF
+		        INC     DE
+OSCLI5:			BIT     7,(HL)
+			INC     HL
+			JR      Z,OSCLI5
+			LD      A,(HL)
+			INC     HL
+			LD      H,(HL)
+			LD      L,A
+			PUSH    HL
+			EX      DE,HL
+			JP      SKIPSP
+;
+OSCLI6:			EX	DE, HL			; HL: Buffer for command
+			LD	DE, ACCS		; Buffer for command string is ACCS (the string accumulator)
+			PUSH	DE			; Store buffer address
+			CALL	CSTR_LINE		; Fetch the line
+			POP	HL			; HL: Pointer to command string in ACCS
+			PUSH	IY
+			MOSCALL	mos_oscli		; Returns OSCLI error in A
+			POP	IY
+			OR	A			; 0 means MOS returned OK
+			RET	Z			; So don't do anything
+			JP 	OSERROR			; Otherwise it's a MOS error
+
+SKIPSP:			LD      A,(HL)			
+        		CP      ' '
+        		RET     NZ
+        		INC     HL
+        		JR      SKIPSP	
+
+UPPRC:  		AND     7FH
+			CP      '`'
+			RET     C
+			AND     5FH			; CONVERT TO UPPER CASE
+			RET	
+
+; Each command has bit 7 of the last character set, and is followed by the address of the handler
+; These must be in alphabetical order
+;		
+COMDS:  		DB	'BY','E'+80h		; BYE
+			DW	BYE
+;			DB	'EDI','T'+80h		; EDIT
+;			DW	STAR_EDIT
+;			DB	'F','X'+80h		; FX
+;			DW	STAR_FX
+;			DB	'VERSIO','N'+80h	; VERSION
+;			DW	STAR_VERSION
+			DB	FFh			
+
+; *BYE
+;
+BYE:			CALL	VBLANK_STOP		; Restore MOS interrupts
+			POP.LIL	IX 			; The return address to init
+			LD	HL, 0			; The return code
+			JP	(IX)
+
+
 
 ; Helper Functions
 ;
@@ -273,26 +806,3 @@ $$:			CP.LIL 	A, (IX + sysvar_time + 0)
 			JR	Z, $B
 			POP	IX
 			RET
-
-; Currently unimplemented stuff
-;
-SORRY:			MACRO 	text 
-			XOR	A
-			CALL	EXTERR 
-			DEFB	'Sorry - '
-			DEFB	text
-			DEFB	0 
-			ENDMACRO 
-
-OSSHUT:			RET		; TODO: This just returns to prevent an error when running BASIC
-
-OSOPEN:			SORRY 'OSOPEN'
-OSLOAD:			SORRY 'OSLOAD'
-OSSAVE:			SORRY 'OSSAVE'
-OSSTAT:			SORRY 'OSSTAT'
-OSBGET:			SORRY 'OSBGET'
-OSBPUT:			SORRY 'OSBPUT'
-GETPTR:			SORRY 'GETPTR'
-PUTPTR:			SORRY 'PUTPTR'
-GETEXT:			SORRY 'GETEXT'
-BYE:			SORRY 'BYE'

@@ -1,13 +1,14 @@
 # Title:		Z80 Source Transformer
 # Author:		Dean Belfield
 # Created:		15/08/2024
-# Last Updated:	06/12/2024
+# Last Updated:	08/12/2024
 # Description:	Convert Z80 assembler to work on various assemblers
 #
 # Modinfo:
 # 01/12/2024:	Improved the label parsing state machine
 # 04/12/2024:	Exported files for ZDS now assemble
 # 06/12/2024:	Added directives in hints and tweaked hints data
+# 08/12/2024:	Tweaked for OSCLI and file I/O
 
 import sys
 import os
@@ -405,27 +406,30 @@ project.setHints({
 			"directives": [
 				"\tDEFINE LORAM, SPACE = ROM",
 				"\tSEGMENT LORAM",
-				"\tALIGN 256",
 				";",
+				"\tXDEF\tFLAGS",
+				"\tXDEF\tOSWRCHPT",
+				"\tXDEF\tOSWRCHCH",
+				"\tXDEF\tOSWRCHFH",
 				"\tXDEF\tKEYDOWN",
 				"\tXDEF\tKEYASCII",
 				"\tXDEF\tKEYCOUNT",
-				"\tXDEF\tSCRAP"
+				"\tXDEF\tSCRAP",
+				"\tXDEF\tBUFFER",
+				"\tXDEF\tLISTON",
+				"\tXDEF\tPAGE_",
+				";",
+				"FLAGS:\tDS\t1",
+				"OSWRCHPT:\tDS\t2",
+				"OSWRCHCH:\tDS\t1",
+				"OSWRCHFH:\tDS\t1",
+				"KEYDOWN:\tDS\t1",
+				"KEYASCII:\tDS\t1",
+				"KEYCOUNT:\tDS\t1",
+				"SCRAP:\tDS\t31",
+				";",
+				"\tALIGN 256"
 			],
-			"hints": [
-				{
-					"hint": "END",
-					"prepend": [
-						"KEYDOWN:\tDS\t1",
-						"KEYASCII:\tDS\t1",
-						"KEYCOUNT:\tDS\t1",
-						"SCRAP:\tDS\t31",
-						";",
-						"\tALIGN 256",
-						";"
-					]
-				}
-			]
 		}
 	},
 	"../src/EVAL.Z80": {
@@ -463,7 +467,18 @@ project.setHints({
 	},	
 	"../src/MAIN.Z80": { 
 		"zds": {
-			"directives": [ "\tSEGMENT CODE" ],
+			"directives": [
+				"\tSEGMENT CODE",
+				";",				
+				"\tXDEF\tNEWIT",
+				"\tXDEF\tBAD",
+				"\tXDEF\tCLEAN",
+				"\tXDEF\tLINNUM",
+				"\tXDEF\tERROR_",
+				"\tXDEF\tGETTOP",
+				"\tXDEF\tDEL",
+				"\tXDEF\tLISTIT"
+			],
 			"hints": [
 				{
 					"hint": "\'Can\'\'t match \'",
