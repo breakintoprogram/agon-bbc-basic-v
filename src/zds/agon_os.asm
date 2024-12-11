@@ -2,10 +2,11 @@
 ; Title:	BBC Basic for AGON - MOS stuff
 ; Author:	Dean Belfield
 ; Created:	04/12/2024
-; Last Updated:	08/12/2024
+; Last Updated:	11/12/2024
 ;
 ; Modinfo:
 ; 08/12/2024:	Added OSCLI and file I/O
+; 11/12/2024:	Added ESC key handling
 
 			.ASSUME	ADL = 0
 				
@@ -76,6 +77,7 @@
 			XREF	FINDL
 			XREF	DEL
 			XREF	LISTIT
+			XREF	ESCAPE
 
 ;OSINIT - Initialise RAM mapping etc.
 ;If BASIC is entered by BBCBASIC FILENAME then file
@@ -129,20 +131,60 @@ OSLINE1:		PUSH	IY
 			CALL	NULLTOCR		; Turn the 0 character to a CR
 			CALL	CRLF			; Display CRLF
 			POP	AF
-;			CP	1Bh 			; Check if ESC terminated the input
-;			JP	Z, LTRAP1 		; Yes, so do the ESC thing
-;			LD	A, (FLAGS)		; Otherwise
-;			RES	7, A 			; Clear the escape flag
-;			LD	(FLAGS), A 
+			CP	1Bh 			; Check if ESC terminated the input
+			JP	Z, LTRAP1 		; Yes, so do the ESC thing
+			LD	A, (FLAGS)		; Otherwise
+			RES	7, A 			; Clear the escape flag
+			LD	(FLAGS), A 
 			CALL	WAIT_VBLANK 		; Wait a frame 
  			XOR	A			; Return A = 0
 			LD	(KEYDOWN), A 
 			LD	(KEYASCII), A
 			RET		
 
-TRAP:
-LTRAP:			XOR	A			; TODO: See patch.asm
-ESCSET:			RET
+;
+; ESCSET
+; Set the escape flag (bit 7 of FLAGS = 1) if escape is enabled (bit 6 of FLAGS = 0)
+;
+ESCSET: 		PUSH    HL
+        		LD      HL,FLAGS		; Pointer to FLAGS
+        		BIT     6,(HL)			; If bit 6 is set, then
+        		JR      NZ,ESCDIS		; escape is disabled, so skip
+        		SET     7,(HL)			; Set bit 7, the escape flag
+ESCDIS: 		POP     HL
+        		RET	
+
+;
+; ESCTEST
+; Test for ESC key
+;
+ESCTEST:		CALL	READKEY			; Read the keyboard
+			RET	NZ			; Skip if no key is pressed				
+			CP	1BH			; If ESC pressed then
+			JR	Z,ESCSET		; jump to the escape set routine
+			RET
+
+; Read the keyboard
+; Returns:
+; - A: ASCII of the pressed key
+; - F: Z if the key is pressed, otherwise NZ
+;
+READKEY:		LD	A, (KEYDOWN)		; Get key down
+			DEC	A 			; Set Z flag if keydown is 1
+			LD	A, (KEYASCII)		; Get key ASCII value
+			RET 
+;
+; TRAP
+; This is called whenever BASIC needs to check for ESC
+;
+TRAP:			CALL	ESCTEST			; Read keyboard, test for ESC, set FLAGS
+;
+LTRAP:			LD	A,(FLAGS)		; Get FLAGS
+			OR	A			; This checks for bit 7; if it is not set then the result will
+			RET	P			; be positive (bit 7 is the sign bit in Z80), so return
+LTRAP1:			LD	HL,FLAGS 		; Escape is pressed at this point, so
+			RES	7,(HL)			; Clear the escape pressed flag and
+			JP	ESCAPE			; Jump to the ESCAPE error routine in exec.asm
 
 ; RESET
 ;
