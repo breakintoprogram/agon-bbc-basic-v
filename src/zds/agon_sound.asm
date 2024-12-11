@@ -2,9 +2,10 @@
 ; Title:	BBC Basic for AGON - Audio stuff
 ; Author:	Dean Belfield
 ; Created:	04/12/2024
-; Last Updated:	04/12/2024
+; Last Updated:	11/12/2024
 ;
 ; Modinfo:
+; 11/12/2024:	Modified SOUND_ to work with OSWORD
 			
 			.ASSUME	ADL = 0
 				
@@ -16,57 +17,40 @@
 			
 			XDEF	SOUND_
 			
-;			XREF	EXPR_W2
-;			XREF	LTRAP
-			XREF	COMMA
-			XREF	XEQ
 			XREF	OSWRCH
 			XREF	VDU_BUFFER
+			XREF	LTRAP
 
-; TODO: Temporary
-;
-EXPR_W2:
-LTRAP:			RET			
-				
 ; SOUND channel,volume,pitch,duration
-; volume: 0 (off) to -15 (full volume)
-; pitch: 0 - 255
-; duration: -1 to 254 (duration in 20ths of a second, -1 = play forever)
+; Parameters:
+; - HL: Pointer to data
+;   - 0,1: Channel
+;   - 2,3: Volume 0 (off) to 15 (full volume)
+;   - 4,5: Pitch 0 - 255
+;   - 6,7: Duration -1 to 254 (duration in 20ths of a second, -1 = play forever)
 ;
-SOUND_:			CALL	EXPR_W2			; DE: Channel/Control, HL: Volume
-			LD	A, L 			;  A: Volume
-			PUSH	AF
-			PUSH	DE
-			CALL	COMMA
-			CALL	EXPR_W2			; DE: Pitch, HL: Duration
-			LD	D, E			;  D: Pitch
-			LD	E, L 			;  E: Duration
-			POP	HL 			; HL: Channel/Control
-			POP	AF
-			NEG
-			CP	16			; Check volume is in bounds
-			JP	NC, XEQ			; Out of bounds, do nothing
-;
-; Store	in VDU vars
-; 
-			LD	C, A			; Store Volume in C
-			LD	A, L
-			LD	(VDU_BUFFER+0), A	; Channel
-			XOR	A
-			LD	(VDU_BUFFER+1), A	; Waveform
+SOUND_:			LD	A, (HL)			; Channel
+			LD	(VDU_BUFFER+0), A 
+			XOR	A			; Waveform
+			LD	(VDU_BUFFER+1), A
+			INC	HL
+			INC	HL
 ; 
 ; Calculate the volume
 ; 
+			LD	C, (HL)			; Volume
 			LD	B, 6			; C already contains the volume
 			MLT	BC			; Multiply by 6 (0-15 scales to 0-90)
 			LD	A, C
 			LD	(VDU_BUFFER+2), A
+			INC	HL
+			INC	HL
 ;
 ; And the frequency
 ;
-			LD	C, E			; Store duration in C
-			LD	H, 0			; Lookup the frequency
-			LD	L, D
+			PUSH	HL
+			LD	L, (HL) 
+			LD	H, 0
 			LD	DE, SOUND_FREQ_LOOKUP
 			ADD	HL, HL
 			ADD	HL, DE
@@ -75,9 +59,13 @@ SOUND_:			CALL	EXPR_W2			; DE: Channel/Control, HL: Volume
 			INC	HL
 			LD	A, (HL)
 			LD	(VDU_BUFFER+4), A
+			POP	HL
+			INC	HL
+			INC	HL
 ;
 ; And now the duration - multiply it by 50 to convert from 1/20ths of seconds to milliseconds
 ;
+			LD	C, (HL)
 			LD	B, 50			; C contains the duration, so MLT by 50
 			MLT	BC
 			LD	(VDU_BUFFER+5), BC
@@ -107,7 +95,7 @@ $$:			BIT.LIL	3, (IX+sysvar_vpd_pflags)
 			JR	Z, SOUND0		; No, so loop back and send again
 ;
 			POP	IX
-			JP	XEQ
+			RET 
 
 ; Frequency Lookup Table
 ; Set up to replicate the BBC Micro audio frequencies
