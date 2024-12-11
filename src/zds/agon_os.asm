@@ -7,6 +7,7 @@
 ; Modinfo:
 ; 08/12/2024:	Added OSCLI and file I/O
 ; 11/12/2024:	Added ESC key handling
+; 		Added OSWORD
 
 			.ASSUME	ADL = 0
 				
@@ -78,6 +79,11 @@
 			XREF	DEL
 			XREF	LISTIT
 			XREF	ESCAPE
+			XREF	ASC_TO_NUMBER
+			XREF	CLOOP
+			XREF	SCRAP
+			XREF	POINT_
+			XREF	SOUND_
 
 ;OSINIT - Initialise RAM mapping etc.
 ;If BASIC is entered by BBCBASIC FILENAME then file
@@ -103,7 +109,31 @@ PROMPT: 		LD	A,'>'			; Falls through to OSWRCH
 ; Parameters:
 ; - A: Character to write
 ;
-OSWRCH:			RST.LIS	10h			; Output the character to MOS
+OSWRCH:			PUSH	HL
+			LD	HL, LISTON		; Fetch the LISTON variable
+			BIT	3, (HL)			; Check whether we are in *EDIT mode
+			JR	NZ, OSWRCH_BUFFER	; Yes, so just output to buffer
+;
+			LD	HL, (OSWRCHCH)		; L: Channel #
+			DEC	L			; If it is 1
+			JR	Z, OSWRCH_FILE		; Then we are outputting to a file
+;
+			POP	HL			; Otherwise
+			RST.LIS	10h			; Output the character to MOS
+			RET
+;	
+OSWRCH_BUFFER:		LD	HL, (OSWRCHPT)		; Fetch the pointer buffer
+			LD	(HL), A			; Echo the character into the buffer
+			INC	HL			; Increment pointer
+			LD	(OSWRCHPT), HL		; Write pointer back
+			POP	HL			
+			RET
+;
+OSWRCH_FILE:		PUSH	DE
+			LD	E, H			; Filehandle to E
+			CALL	OSBPUT			; Write the byte out
+			POP	DE
+			POP	HL
 			RET
 
 ; OSRDCH
@@ -606,7 +636,35 @@ EXT_LOOKUP:		DB	'.BBC', 0, 0		; First entry is the default extension
 			DB	0			; End of table
 ; OSWORD
 ;
-OSWORD:			RET				; TODO
+OSWORD:			CP	07H			; SOUND
+			JR	Z, OSWORD_07
+			CP	08H			; ENVELOPE
+			JR	Z, OSWORD_08
+			CP	09H			; POINT
+			JR	Z, OSWORD_09
+			JP	HUH			; Anything else trips an error
+
+; SOUND channel,volume,pitch,duration
+; Parameters:
+; - HL: Pointer to data
+;   - 0,1: Channel
+;   - 2,3: Volume 0 (off) to 15 (full volume)
+;   - 4,5: Pitch 0 - 255
+;   - 6,7: Duration -1 to 254 (duration in 20ths of a second, -1 = play forever)
+;
+OSWORD_07:		EQU	SOUND_
+
+; OSWORD 0x09: POINT
+; Parameters:
+; - HL: Address of data
+;   - 0,1: X coordinate
+;   - 2,3: Y coordinate
+;
+OSWORD_09:		LD	DE,(SCRAP+0)
+			LD	HL,(SCRAP+2)
+			CALL	POINT_
+			LD	(SCRAP+4),A
+OSWORD_08:		RET				; Envelope not currently implemented
 
 ;
 ; OSBYTE
@@ -822,10 +880,10 @@ UPPRC:  		AND     7FH
 ;		
 COMDS:  		DB	'BY','E'+80h		; BYE
 			DW	BYE
-;			DB	'EDI','T'+80h		; EDIT
-;			DW	STAR_EDIT
-;			DB	'F','X'+80h		; FX
-;			DW	STAR_FX
+			DB	'EDI','T'+80h		; EDIT
+			DW	STAR_EDIT
+			DB	'F','X'+80h		; FX
+			DW	STAR_FX
 ;			DB	'VERSIO','N'+80h	; VERSION
 ;			DW	STAR_VERSION
 			DB	FFh			
@@ -837,7 +895,55 @@ BYE:			CALL	VBLANK_STOP		; Restore MOS interrupts
 			LD	HL, 0			; The return code
 			JP	(IX)
 
+; *EDIT linenum
+;
+STAR_EDIT:		CALL	ASC_TO_NUMBER		; DE: Line number to edit
+			EX	DE, HL			; HL: Line number
+			CALL	FINDL			; HL: Address in RAM of tokenised line			
+			LD	A, 41			; F:NZ If the line is not found
+			JP	NZ, ERROR_		; Do error 41: No such line in that case
+;
+; Use LISTIT to output the line to the ACCS buffer
+;
+			INC	HL			; Skip the length byte
+			LD	E, (HL)			; Fetch the line number
+			INC	HL
+			LD	D, (HL)
+			INC	HL
+			LD	IX, ACCS		; Pointer to where the copy is to be stored
+			LD	(OSWRCHPT), IX
+			LD	IX, LISTON		; Pointer to LISTON variable in RAM
+			LD	A, (IX)			; Store that variable
+			PUSH	AF
+			LD	(IX), 09h		; Set to echo to buffer
+			CALL	LISTIT
+			POP	AF
+			LD	(IX), A			; Restore the original LISTON variable			
+			LD	HL, ACCS		; HL: ACCS
+			LD	E, L			;  E: 0 - Don't clear the buffer; ACCS is on a page boundary so L is 0
+			CALL	OSLINE1			; Invoke the editor
+			CALL	OSEDIT
+			CALL    C,CLEAN			; Set TOP, write out &FFFF end of program marker
+			JP      CLOOP			; Jump back to immediate mode
 
+; OSCLI FX n
+;
+STAR_FX:		CALL	ASC_TO_NUMBER
+			LD	C, E			; C: Save FX #
+			CALL	ASC_TO_NUMBER
+			LD	A, D  			; Is first parameter > 255?
+			OR 	A 			
+			JR	Z, STAR_FX1		; Yes, so skip next bit 
+			EX	DE, HL 			; Parameter is 16-bit
+			JR	STAR_FX2 
+;
+STAR_FX1:		LD	B, E 			; B: Save First parameter
+			CALL	ASC_TO_NUMBER		; Fetch second parameter
+			LD	L, B 			; L: First parameter
+			LD	H, E 			; H: Second parameter
+;
+STAR_FX2:		LD	A, C 			; A: FX #
+			JP	OSBYTE	
 
 ; Helper Functions
 ;
