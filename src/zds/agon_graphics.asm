@@ -2,9 +2,10 @@
 ; Title:	BBC Basic for AGON - Graphics stuff
 ; Author:	Dean Belfield
 ; Created:	04/12/2024
-; Last Updated:	04/12/2024
+; Last Updated:	11/12/2024
 ;
 ; Modinfo:
+; 11/12/2024:	Modified POINT_ to work with OSWORD
 			
 			.ASSUME	ADL = 0
 				
@@ -14,14 +15,8 @@
 		
 			SEGMENT CODE
 				
-;			XDEF	CLG
-;			XDEF	CLRSCN
 			XDEF	MODE_
 			XDEF	COLOUR_
-;			XDEF	GCOL
-;			XDEF	MOVE
-;			XDEF	PLOT
-;			XDEF	DRAW
 			XDEF	POINT_
 			XDEF	GETSCHR
 			XDEF	GETSCHR_1
@@ -39,19 +34,8 @@
 			XREF	NULLTOCR
 			XREF	CRLF
 			XREF	EXPR_W2
-;			XREF	COUNT0
 ;			XREF	INKEY1
 			
-; CLG: clears the graphics area
-;
-;CLG:			VDU	10h
-;			JP	XEQ
-
-; CLS: clears the text area
-;
-;CLRSCN:		LD	A, 0Ch
-;			JP	OSWRCH
-				
 ; MODE n: Set video mode
 ;
 MODE_:			PUSH	IX			; Get the system vars in IX
@@ -115,41 +99,30 @@ $$:			POP	IX
 			RET 
 
 ; POINT(x,y): Get the pixel colour of a point on screen
+; Parameters:
+; - DE: X-coordinate
+; - HL: Y-coordinate
+; Returns:
+; -  A: Pixel colour
 ;
-POINT_:			CALL    EXPRI      		; Get X coordinate
-			EXX
-			LD	(VDU_BUFFER+0), HL
-			CALL	COMMA		
-			CALL	EXPRI			; Get Y coordinate
-			EXX 
-			LD	(VDU_BUFFER+2), HL
-			CALL	BRAKET			; Closing bracket		
-;
-			PUSH	IX			; Get the system vars in IX
+POINT_:			PUSH	IX			; Get the system vars in IX
 			MOSCALL	mos_sysvars		; Reset the semaphore
 			RES.LIL	2, (IX+sysvar_vpd_pflags)
 			VDU	23
 			VDU	0
 			VDU	vdp_scrpixel
-			VDU	(VDU_BUFFER+0)
-			VDU	(VDU_BUFFER+1)
-			VDU	(VDU_BUFFER+2)
-			VDU	(VDU_BUFFER+3)
+			VDU	E
+			VDU	D
+			VDU	L
+			VDU	H
 $$:			BIT.LIL	2, (IX+sysvar_vpd_pflags)
 			JR	Z, $B			; Wait for the result
 ;
 ; Return the data as a 1 byte index
 ;
-			LD.LIL	L, (IX+(sysvar_scrpixelIndex))
+			LD.LIL	A, (IX+(sysvar_scrpixelIndex))
 			POP	IX	
-;			JP	COUNT0
-		        LD	H,0	
-			EXX	
-	                XOR	A	
-                	LD	C,A		;INTEGER MARKER	
-                	LD	H,A	
-                	LD	L,A	
-                	RET	
+			RET
 
 ; COLOUR colour
 ; COLOUR L,P
@@ -201,66 +174,3 @@ COLOUR_2:		CALL	COMMA
 			VDU	(VDU_BUFFER+2)		; G
 			VDU	(VDU_BUFFER+3)		; B
 			JP	XEQ
-
-; GCOL mode,colour
-;
-;GCOL:			CALL	EXPRI			; Parse MODE
-;			EXX
-;			LD	A, L 
-;			LD	(VDU_BUFFER+0), A	
-;			CALL	COMMA
-;
-;			CALL	EXPRI			; Parse Colour
-;			EXX
-;			LD	A, L
-;			LD	(VDU_BUFFER+1), A
-;
-;			VDU	12h			; VDU:GCOL
-;			VDU	(VDU_BUFFER+0)		; Mode
-;			VDU	(VDU_BUFFER+1)		; Colour
-;			JP	XEQ
-			
-; PLOT mode,x,y
-;
-;PLOT:			CALL	EXPRI		; Parse mode
-;			EXX					
-;			PUSH	HL		; Push mode (L) onto stack
-;			CALL	COMMA 	
-;			CALL	EXPR_W2		; Parse X and Y
-;			POP	BC		; Pop mode (C) off stack
-;PLOT_1:		VDU	19H		; VDU code for PLOT				
-;			VDU	C		;  C: Mode
-;			VDU	E		; DE: X
-;			VDU	D
-;			VDU	L		; HL: Y
-;			VDU	H
-;			JP	XEQ
-
-; MOVE x,y
-;
-;MOVE:			CALL	EXPR_W2		; Parse X and Y
-;			LD	C, 04H		; Plot mode 04H (Move)
-;			JR	PLOT_1		; Plot
-
-; DRAW x1,y1
-; DRAW x1,y1,x2,y2
-;
-;DRAW:			CALL	EXPR_W2		; Get X1 and Y1
-;			CALL	NXT		; Are there any more parameters?
-;			CP	','
-;			LD	C, 05h		; Code for LINE
-;			JR	NZ, PLOT_1	; No, so just do DRAW x1,y1
-;			VDU	19h		; Move to the first coordinates
-;			VDU	04h
-;			VDU	E
-;			VDU	D
-;			VDU	L
-;			VDU	H
-;			CALL	COMMA
-;			PUSH	BC
-;			CALL	EXPR_W2		; Get X2 and Y2
-;			POP	BC
-;			JR	PLOT_1		; Now DRAW the line to those positions
-			
-			
-			
