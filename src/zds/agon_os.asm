@@ -2,12 +2,13 @@
 ; Title:	BBC Basic for AGON - MOS stuff
 ; Author:	Dean Belfield
 ; Created:	04/12/2024
-; Last Updated:	11/12/2024
+; Last Updated:	12/12/2024
 ;
 ; Modinfo:
 ; 08/12/2024:	Added OSCLI and file I/O
 ; 11/12/2024:	Added ESC key handling
 ; 		Added OSWORD
+; 12/12/2024:	Added OSRDCH, OSBYTE_81 and fixed *EDIT
 
 			.ASSUME	ADL = 0
 				
@@ -123,10 +124,15 @@ OSWRCH:			PUSH	HL
 			RET
 ;	
 OSWRCH_BUFFER:		LD	HL, (OSWRCHPT)		; Fetch the pointer buffer
-			LD	(HL), A			; Echo the character into the buffer
+			CP	0AH			; Just ignore this
+			JR	Z, OSWRCH_BUFFER2
+			CP	0DH			; Is it the end of line?
+			JR	NZ, OSWRCH_BUFFER1	; No, so carry on
+			XOR	A			; Turn it into a NUL character
+OSWRCH_BUFFER1:		LD	(HL), A			; Echo the character into the buffer
 			INC	HL			; Increment pointer
 			LD	(OSWRCHPT), HL		; Write pointer back
-			POP	HL			
+OSWRCH_BUFFER2:		POP	HL			
 			RET
 ;
 OSWRCH_FILE:		PUSH	DE
@@ -138,7 +144,10 @@ OSWRCH_FILE:		PUSH	DE
 
 ; OSRDCH
 ;
-OSRDCH:			RET
+OSRDCH:			MOSCALL	mos_getkey		; Read keyboard
+			CP	1Bh
+			JR	Z, LTRAP1 
+			RET
 
 ; OSLINE: Invoke the line editor
 ;
@@ -753,8 +762,21 @@ OSBYTE_76:		VDU	23
 ; - A: If carry set, A = character typed
 ; Destroys: A,D,E,H,L,F
 ;
-OSBYTE_81:		XOR	A
-			RET
+OSBYTE_81:		CALL	READKEY			; Read the keyboard 
+			JR	Z, $F 			; Skip if we have a key
+			LD	A, H 			; Check loop counter
+			OR 	L
+			RET 	Z 			; Return, we've not got a key at this point
+			CALL	WAIT_VBLANK 		; Wait a frame
+			DEC 	HL			; Decrement
+			JR	OSBYTE_81		; And loop
+;
+$$:			LD	HL, KEYDOWN		; We have a key, so 
+			LD	(HL), 0			; clear the keydown flag
+			CP	1BH			; If we are not pressing ESC, 
+			SCF 				; then flag we've got a character
+			RET	NZ
+			JP	ESCSET			; Handle ESC
 
 ; OSBYTE 0x86: Fetch cursor coordinates
 ; Returns:
