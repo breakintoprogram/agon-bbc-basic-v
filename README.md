@@ -1,4 +1,7 @@
-# BBCZ80
+# BBCZ80 for the Agon Light
+This is a fork of BBCZ80 by R.T.Russell with a rewritten MOS layer for the Agon Light.
+
+## BBCZ80
 BBC BASIC (Z80) v5 is an implementation of the BBC BASIC programming language for the Z80 CPU.
 It is largely compatible with Acorn's ARM BASIC V but with a few language extensions based on
 features of 'BBC BASIC for Windows' and 'BBC BASIC for SDL 2.0'.  These extensions include the
@@ -16,3 +19,23 @@ to build the Acorn Z80 Second Processor edition.
 
 Note that the name 'BBC BASIC' is used by permission of the British Broadcasting Corporation
 and is not transferrable to a derived or forked work.
+
+## Agon Light
+The Agon Light version uses the following files from the original fork:
+
+- ACORN.Z80
+- ASMB.Z80
+- DATA.Z80
+- EVAL.Z80
+- EXEC.Z80
+- MAIN.Z80
+- MATH.Z80
+
+All Agon specific source code and ZDSII project files are in the folder src/zds.
+
+### Building
+
+The files from the original fork are converted to work with the ZDS assembler by the Python script tools/transform_source.py
+and written out to the folder src/zds.
+
+To build, load the project "BBC BASIC" into the Zilog ZDSII IDE and press F7.
