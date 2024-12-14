@@ -3,9 +3,10 @@
 ;		Initialisation Code
 ; Author:	Dean Belfield
 ; Created:	04/12/2024
-; Last Updated:	04/12/2024
+; Last Updated:	14/12/2024
 ;
 ; Modinfo:
+; 14/12/2024:	Fix for *BYE command
 
 			SEGMENT __VECTORS
 			
@@ -110,7 +111,7 @@ _main:			LD	HL, ACCS		; Clear the ACCS
 			LD	A, C			
 			CP	2
 			JR	Z, _autoload		; 2 parameters = autoload
-			JP	C, START		; 1 parameter = normal start
+			JR	C, _startbasic		; 1 parameter = normal start
 ;			CALL	STAR_VERSION		; Output the AGON version
 			CALL	TELL
 			DB	"Usage:\n\r"
@@ -128,8 +129,11 @@ $$:			LD.LIL	A, (HL)			; Fetch the filename byte
 			DEC	E
 			LD	A, CR
 			LD	(DE), A			; Replace the 0 byte with a CR for BBC BASIC
-			JP 	START
-			
+;
+_startbasic:		POP	 HL			; Pop the return address to init off SPS
+			PUSH.LIL HL 			; Stack it on SPL (*BYE will use this as the return address)
+			JP	 START			; And start BASIC
+
 ; Parse the parameter string into a C array
 ; Parameters
 ; -   A: Segment base
