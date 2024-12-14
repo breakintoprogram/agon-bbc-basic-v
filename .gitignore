@@ -57,9 +57,7 @@ exec.asm
 main.asm
 math.asm 
 
-# ZDS files
-*.lst
-*.linkcmd
-*.mak
+# ZDS build files
+Debug/
+Release/
 *.wsp
-*.lod
