@@ -9,8 +9,7 @@
 ; 11/12/2024:	Added ESC key handling
 ; 		Added OSWORD
 ; 12/12/2024:	Added OSRDCH, OSBYTE_81 and fixed *EDIT
-; 17/12/2024:	Added OSWORD_01, OSWORD_02, OSWORD_0E, GET$(x,y)
-;		Fixed INKEY
+; 17/12/2024:	Added OSWORD_01, OSWORD_02, OSWORD_0E, GET$(x,y), fixed INKEY and autoload
 
 			.ASSUME	ADL = 0
 				
@@ -108,6 +107,8 @@ OSINIT:			CALL	VBLANK_INIT
 			LD 	HL, USER
 			LD	DE, RAM_Top
 			LD	E, A			; Page boundary
+			LD	A, (ACCS)		; Return NZ if there is a file to chain
+			OR	A			
 			RET	
 
 ; PROMPT: output the input prompt
