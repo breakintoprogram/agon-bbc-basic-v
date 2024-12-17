@@ -10,6 +10,7 @@
 ; 		Added OSWORD
 ; 12/12/2024:	Added OSRDCH, OSBYTE_81 and fixed *EDIT
 ; 17/12/2024:	Added OSWORD_01, OSWORD_02, OSWORD_0E, GET$(x,y)
+;		Fixed INKEY
 
 			.ASSUME	ADL = 0
 				
@@ -90,6 +91,8 @@
 			XREF	COMMA 
 			XREF	BRAKET 
 			XREF 	GETSCHR 
+			XREF	ZERO
+			XREF	TRUE
 
 ;OSINIT - Initialise RAM mapping etc.
 ;If BASIC is entered by BBCBASIC FILENAME then file
@@ -820,24 +823,67 @@ OSBYTE_76:		VDU	23
 ; - HL = Time to wait (centiseconds)
 ; Returns:
 ; - F: Carry reset indicates time-out
-; - A: If carry set, A = character typed
+; - H: NZ if timed out
+; - L: The character typed
 ; Destroys: A,D,E,H,L,F
 ;
-OSBYTE_81:		CALL	READKEY			; Read the keyboard 
+OSBYTE_81:		EXX
+			BIT 	7, H 			; Check for minus numbers
+			EXX
+			JR	NZ, OSBYTE_81_1		; Yes, so do INKEY(-n)
+			CALL	READKEY			; Read the keyboard 
 			JR	Z, $F 			; Skip if we have a key
+			CALL	WAIT_VBLANK 		; Wait a frame
 			LD	A, H 			; Check loop counter
 			OR 	L
-			RET 	Z 			; Return, we've not got a key at this point
-			CALL	WAIT_VBLANK 		; Wait a frame
 			DEC 	HL			; Decrement
-			JR	OSBYTE_81		; And loop
+			JR	NZ, OSBYTE_81		; And loop 
+			RET 				; H: Will be set to 255 to flag timeout
 ;
 $$:			LD	HL, KEYDOWN		; We have a key, so 
 			LD	(HL), 0			; clear the keydown flag
-			CP	1BH			; If we are not pressing ESC, 
-			SCF 				; then flag we've got a character
-			RET	NZ
-			JP	ESCSET			; Handle ESC
+			CP	1BH			; If we are pressing ESC, 
+			JP	Z, ESCSET 		; Then handle ESC
+			LD	H, 0			; H: Not timed out
+			LD	L, A			; L: The character
+			RET	
+;
+;
+; Check immediately whether a given key is being pressed
+; Result is integer numeric
+;
+OSBYTE_81_1:		MOSCALL	mos_getkbmap		; Get the base address of the keyboard
+			INC	HL			; Index from 0
+			LD	A, L			; Negate the LSB of the answer
+			NEG
+			LD	C, A			;  E: The positive keycode value
+			LD	A, 1			; Throw an "Out of range" error
+			JP	M, ERROR_		; if the argument < - 128
+;
+			LD	HL, BITLOOKUP		; HL: The bit lookup table
+			LD	DE, 0
+			LD	A, C
+			AND	00000111b		; Just need the first three bits
+			LD	E, A			; DE: The bit number
+			ADD	HL, DE
+			LD	B, (HL)			;  B: The mask
+;
+			LD	A, C			; Fetch the keycode again
+			AND	01111000b		; And divide by 8
+			RRCA
+			RRCA
+			RRCA
+			LD	E, A			; DE: The offset (the MSW has already been cleared previously)
+			ADD.LIL	IX, DE			; IX: The address
+			LD.LIL	A, (IX+0)		;  A: The keypress
+			AND	B			; Check whether the bit is set
+			JP	Z, ZERO			; No, so return 0
+			JP	TRUE			; Otherwise return -1
+;
+; A bit lookup table
+;
+BITLOOKUP:		DB	01h, 02h, 04h, 08h
+			DB	10h, 20h, 40h, 80h	
 
 ; OSBYTE 0x86: Fetch cursor coordinates
 ; Returns:
