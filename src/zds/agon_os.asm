@@ -9,7 +9,7 @@
 ; 11/12/2024:	Added ESC key handling
 ; 		Added OSWORD
 ; 12/12/2024:	Added OSRDCH, OSBYTE_81 and fixed *EDIT
-; 17/12/2024:	Added OSWORD_01, OSWORD_02, OSWORD_0E, GET$(x,y), fixed INKEY and autoload
+; 17/12/2024:	Added OSWORD_01, OSWORD_02, OSWORD_0E, GET$(x,y), fixed INKEY, POS, VPOS and autoload
 
 			.ASSUME	ADL = 0
 				
@@ -888,8 +888,8 @@ BITLOOKUP:		DB	01h, 02h, 04h, 08h
 
 ; OSBYTE 0x86: Fetch cursor coordinates
 ; Returns:
-; - DE: X Coordinate (POS)
-; - HL: Y Coordinate (VPOS)
+; - L: X Coordinate (POS)
+; - H: Y Coordinate (VPOS)
 ;
 OSBYTE_86:		PUSH	IX			; Get the system vars in IX
 			MOSCALL	mos_sysvars		; Reset the semaphore
@@ -899,10 +899,8 @@ OSBYTE_86:		PUSH	IX			; Get the system vars in IX
 			VDU	vdp_cursor
 $$:			BIT.LIL	0, (IX+sysvar_vpd_pflags)
 			JR	Z, $B			; Wait for the result
-			LD 	D, 0
-			LD	H, D
-			LD.LIL	E, (IX + sysvar_cursorX)
-			LD.LIL	L, (IX + sysvar_cursorY)			
+			LD.LIL	L, (IX + sysvar_cursorX)
+			LD.LIL	H, (IX + sysvar_cursorY)			
 			POP	IX			
 			RET	
 
