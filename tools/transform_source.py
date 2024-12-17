@@ -1,7 +1,7 @@
 # Title:		Z80 Source Transformer
 # Author:		Dean Belfield
 # Created:		15/08/2024
-# Last Updated:	08/12/2024
+# Last Updated:	17/12/2024
 # Description:	Convert Z80 assembler to work on various assemblers
 #
 # Modinfo:
@@ -9,6 +9,7 @@
 # 04/12/2024:	Exported files for ZDS now assemble
 # 06/12/2024:	Added directives in hints and tweaked hints data
 # 08/12/2024:	Tweaked for OSCLI and file I/O
+# 17/12/2024:	Tweaked for v1.00-RC2
 
 import sys
 import os
@@ -438,7 +439,9 @@ project.setHints({
 				"\tSEGMENT CODE",
 				";",				
 				"\tXDEF\tCOUNT0",
-				"\tXDEF\tCOUNT1"
+				"\tXDEF\tCOUNT1",
+				"\tXDEF\tZERO",
+				"\tXDEF\tTRUE"								
 			],
 			"hints": [
 				{
