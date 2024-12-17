@@ -2,13 +2,14 @@
 ; Title:	BBC Basic for AGON - MOS stuff
 ; Author:	Dean Belfield
 ; Created:	04/12/2024
-; Last Updated:	12/12/2024
+; Last Updated:	17/12/2024
 ;
 ; Modinfo:
 ; 08/12/2024:	Added OSCLI and file I/O
 ; 11/12/2024:	Added ESC key handling
 ; 		Added OSWORD
 ; 12/12/2024:	Added OSRDCH, OSBYTE_81 and fixed *EDIT
+; 17/12/2024:	Added OSWORD_01, OSWORD_02, OSWORD_0E, GET$(x,y)
 
 			.ASSUME	ADL = 0
 				
@@ -85,6 +86,10 @@
 			XREF	SCRAP
 			XREF	POINT_
 			XREF	SOUND_
+			XREF	EXPRI 
+			XREF	COMMA 
+			XREF	BRAKET 
+			XREF 	GETSCHR 
 
 ;OSINIT - Initialise RAM mapping etc.
 ;If BASIC is entered by BBCBASIC FILENAME then file
@@ -144,10 +149,24 @@ OSWRCH_FILE:		PUSH	DE
 
 ; OSRDCH
 ;
-OSRDCH:			MOSCALL	mos_getkey		; Read keyboard
+OSRDCH:			CALL    NXT			; Check if we are doing GET$(x,y)
+			CP      '('
+			JR	Z, $F 			; Yes, so skip to that functionality
+			MOSCALL	mos_getkey		; Otherwise, read keyboard
 			CP	1Bh
 			JR	Z, LTRAP1 
 			RET
+;
+$$:			INC	IY			; Skip '('
+			CALL    EXPRI         	  	; Get the first parameter
+			EXX
+			PUSH	HL
+			CALL	COMMA			; Get the second parameter
+			CALL	EXPRI
+			EXX 
+			POP	DE 			; DE: X coordinate 
+			CALL	BRAKET 			; Check for trailing bracket
+			JP 	GETSCHR			; Read the character
 
 ; OSLINE: Invoke the line editor
 ;
@@ -645,13 +664,48 @@ EXT_LOOKUP:		DB	'.BBC', 0, 0		; First entry is the default extension
 			DB	0			; End of table
 ; OSWORD
 ;
-OSWORD:			CP	07H			; SOUND
+OSWORD:			CP	01H			; GETIME
+			JR	Z, OSWORD_01
+			CP	02H			; PUTIME
+			JR	Z, OSWORD_02
+			CP	0EH			; GETIMS
+			JR	Z, OSWORD_0E
+			CP	0FH			; PUTIMS
+			JR	Z, $F
+			CP	07H			; SOUND
 			JR	Z, OSWORD_07
 			CP	08H			; ENVELOPE
-			JR	Z, OSWORD_08
+			JR	Z, $F
 			CP	09H			; POINT
 			JR	Z, OSWORD_09
 			JP	HUH			; Anything else trips an error
+$$:			RET				; Dummy return for unimplemented functions
+
+; GETIME: return current time in centiseconds
+;
+OSWORD_01:		PUSH 	IX
+			MOSCALL	mos_sysvars
+			LD	B, 4
+$$:			LD.LIL	A, (IX + sysvar_time)
+			LD	(HL), A
+			INC	HL
+			INC.LIL	IX
+			DJNZ 	$B
+			POP	IX
+			RET
+
+; PUTIME: set time in centiseconds
+;
+OSWORD_02:		PUSH 	IX
+			MOSCALL	mos_sysvars
+			LD	B, 4
+$$:			LD	A, (HL)
+			LD.LIL 	(IX + sysvar_time), A
+			INC	HL
+			INC.LIL IX
+			DJNZ 	$B
+			POP	IX
+			RET
 
 ; SOUND channel,volume,pitch,duration
 ; Parameters:
@@ -673,7 +727,14 @@ OSWORD_09:		LD	DE,(SCRAP+0)
 			LD	HL,(SCRAP+2)
 			CALL	POINT_
 			LD	(SCRAP+4),A
-OSWORD_08:		RET				; Envelope not currently implemented
+			RET	
+
+; GETIMS - Get time from RTC
+;
+OSWORD_0E:		PUSH	IY
+			MOSCALL	mos_getrtc
+			POP	IY
+			RET
 
 ;
 ; OSBYTE
@@ -802,7 +863,7 @@ $$:			BIT.LIL	0, (IX+sysvar_vpd_pflags)
 ;
 OSBYTE_87:		PUSH	IX
 			CALL	GETCSR			; Get the current screen position
-			CALL	GETSCHR_1		; Read character from screen
+			CALL	GETSCHR			; Read character from screen
 			LD	L, A 
 			MOSCALL	mos_sysvars
 			LD.LIL	H, (IX+sysvar_scrMode)	; H: Screen mode
